@@ -19,6 +19,10 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # Avoid the obsolete 'tools' package (removed from Google's repo), which the
+          # action installs by default and which fails the whole job.
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
 
       - name: Generate Gradle wrapper (if missing)
         run: |
