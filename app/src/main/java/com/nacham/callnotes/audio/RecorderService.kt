@@ -9,15 +9,21 @@ import android.content.pm.ServiceInfo
 import android.media.MediaRecorder
 import android.os.Build
 import android.os.IBinder
+import android.speech.tts.TextToSpeech
 import androidx.core.app.NotificationCompat
 import com.nacham.callnotes.CallNotesApp
 import com.nacham.callnotes.R
+import com.nacham.callnotes.ai.Processor
 import com.nacham.callnotes.call.CallEvents
 import com.nacham.callnotes.data.ProcessStatus
 import com.nacham.callnotes.data.Recording
 import com.nacham.callnotes.data.RecordingStore
 import com.nacham.callnotes.ui.MainActivity
+import com.nacham.callnotes.util.AppScope
+import com.nacham.callnotes.util.SettingsStore
+import kotlinx.coroutines.launch
 import java.io.File
+import java.util.Locale
 import java.util.UUID
 
 /**
@@ -31,6 +37,7 @@ class RecorderService : Service() {
     private var startedAt: Long = 0L
     private var source: String = "MANUAL"
     private var contact: String? = null
+    private var tts: TextToSpeech? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -80,6 +87,8 @@ class RecorderService : Service() {
             // "Tap to record" notification so the user can start it in the foreground instead.
             stopSelf(); return
         }
+        if (SettingsStore.announceRecording(this)) announce()
+
         val file = AudioStore.newFile(this, source)
         currentFile = file
         startedAt = System.currentTimeMillis()
@@ -109,9 +118,10 @@ class RecorderService : Service() {
         runCatching { rec.release() }
         val file = currentFile ?: return
         if (ok && file.exists() && file.length() > 0) {
+            val id = UUID.randomUUID().toString()
             RecordingStore.get(this).upsert(
                 Recording(
-                    id = UUID.randomUUID().toString(),
+                    id = id,
                     filePath = file.absolutePath,
                     source = source,
                     contact = contact,
@@ -120,12 +130,34 @@ class RecorderService : Service() {
                     status = ProcessStatus.RAW
                 )
             )
+            // Auto transcribe + summarize if the user turned it on. Runs on a process-lifetime
+            // scope so it survives this service being destroyed.
+            if (SettingsStore.autoProcess(this) && SettingsStore.apiKey(this).isNotBlank()) {
+                val appCtx = applicationContext
+                AppScope.launch { Processor.process(appCtx, id) }
+            }
         }
         currentFile = null
     }
 
+    private fun announce() {
+        runCatching {
+            tts = TextToSpeech(this) { status ->
+                if (status == TextToSpeech.SUCCESS) {
+                    tts?.language = Locale.getDefault()
+                    tts?.speak(
+                        getString(R.string.announce_text),
+                        TextToSpeech.QUEUE_FLUSH, null, "announce"
+                    )
+                }
+            }
+        }
+    }
+
     override fun onDestroy() {
         stopRecording()
+        runCatching { tts?.shutdown() }
+        tts = null
         super.onDestroy()
     }
 

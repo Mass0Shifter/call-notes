@@ -2,6 +2,7 @@ package com.nacham.callnotes.ui.screens
 
 import android.content.Context
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,6 +12,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,15 +31,36 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(vm: CallNotesViewModel, onOpen: (String) -> Unit, onSettings: () -> Unit) {
+fun HomeScreen(
+    vm: CallNotesViewModel,
+    onOpen: (String) -> Unit,
+    onSettings: () -> Unit,
+    onSetup: () -> Unit
+) {
     val items by vm.items.collectAsState()
+    val ctx = LocalContext.current
+    var menu by remember { mutableStateOf(false) }
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("CallNotes") },
                 actions = {
-                    IconButton(onClick = onSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                    IconButton(onClick = {
+                        vm.importSamsungRecordings { n ->
+                            Toast.makeText(
+                                ctx,
+                                if (n > 0) "Imported $n call recording(s)"
+                                else "No new phone-call recordings found",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }) { Icon(Icons.Default.Download, contentDescription = "Import call recordings") }
+                    IconButton(onClick = { menu = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "More")
+                    }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text("Setup") }, onClick = { menu = false; onSetup() })
+                        DropdownMenuItem(text = { Text("Settings") }, onClick = { menu = false; onSettings() })
                     }
                 }
             )
@@ -194,5 +218,81 @@ private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Un
     ) {
         Text(label, Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun OnboardingScreen(onDone: () -> Unit, onOpenSettings: () -> Unit) {
+    val ctx = LocalContext.current
+    val activity = ctx as? android.app.Activity
+    // Bumping this re-reads all the live status checks (call it after returning from system settings).
+    var tick by remember { mutableIntStateOf(0) }
+
+    val permLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { tick++ }
+
+    val mic = remember(tick) { com.nacham.callnotes.util.Setup.hasMic(ctx) }
+    val notif = remember(tick) { com.nacham.callnotes.util.Setup.hasNotifications(ctx) }
+    val apiKey = remember(tick) { com.nacham.callnotes.util.Setup.hasApiKey(ctx) }
+    val access = remember(tick) { com.nacham.callnotes.util.Setup.isAccessibilityOn(ctx) }
+    val core = mic && apiKey
+
+    Scaffold(topBar = { TopAppBar(title = { Text("Set up CallNotes") }) }) { pad ->
+        Column(Modifier.padding(pad).padding(16.dp).verticalScroll(rememberScrollState())) {
+            Text("Finish these to start recording and summarizing calls.",
+                style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(16.dp))
+
+            StepRow("Microphone access", mic, if (mic) null else "Grant") {
+                permLauncher.launch(buildList {
+                    add(android.Manifest.permission.RECORD_AUDIO)
+                    if (android.os.Build.VERSION.SDK_INT >= 33) {
+                        add(android.Manifest.permission.POST_NOTIFICATIONS)
+                        add(android.Manifest.permission.READ_MEDIA_AUDIO)
+                    }
+                }.toTypedArray())
+            }
+            StepRow("Notifications", notif, if (notif) null else "Grant") {
+                permLauncher.launch(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS))
+            }
+            StepRow("Transcription API key", apiKey, if (apiKey) null else "Open Settings", onOpenSettings)
+            StepRow("VoIP call detection (WhatsApp/Telegram)", access,
+                if (access) null else "Enable") {
+                com.nacham.callnotes.util.Setup.openAccessibilitySettings(ctx)
+            }
+            StepRow("Add the \"Record call\" Quick Settings tile", false, "Add tile") {
+                activity?.let { com.nacham.callnotes.util.Setup.requestAddTile(it) }
+            }
+
+            Spacer(Modifier.height(16.dp))
+            Text("Tip: for WhatsApp/Telegram, put the call on speakerphone so the other person is " +
+                "captured. For normal phone calls, turn on Samsung's built-in call recording, then " +
+                "use the download icon on the home screen to import those recordings.",
+                style = MaterialTheme.typography.bodySmall)
+
+            Spacer(Modifier.height(24.dp))
+            Row {
+                OutlinedButton(onClick = { tick++ }) { Text("Re-check") }
+                Spacer(Modifier.width(8.dp))
+                Button(onClick = onDone, enabled = core) {
+                    Text(if (core) "Start using CallNotes" else "Grant mic + API key first")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StepRow(label: String, done: Boolean, action: String?, onAction: () -> Unit = {}) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+    ) {
+        Text(if (done) "✓" else "○", Modifier.padding(end = 12.dp),
+            color = if (done) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
+        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        if (action != null) TextButton(onClick = onAction) { Text(action) }
     }
 }

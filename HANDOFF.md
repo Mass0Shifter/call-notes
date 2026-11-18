@@ -135,17 +135,25 @@ Detail screen builds a markdown block (contact, date, summary, checkbox action i
 transcript) and fires `ACTION_SEND` text/markdown so the user drops it into Google Keep/Docs/
 email. `TODO(handoff)`: optional direct Google Drive/Docs via their connector later.
 
-## 5. Remaining TODO(handoff) checklist
-1. Finish `RecorderService` start/stop + background-start fallback.
-2. Implement `CallImport` (MediaStore scan) + Home button.
-3. Wire `CallNotesViewModel.process()` (transcribe → summarize → persist, with progress).
-4. Onboarding screen: request RECORD_AUDIO, POST_NOTIFICATIONS, enable Accessibility, add QS tile,
-   set API key, VoIP-speaker hint.
-5. Fill Detail + Settings composables (skeletons present).
-6. App icon (placeholder vector present) and strings.
-7. Generate Gradle wrapper jar (`gradle wrapper --gradle-version 8.9`) — CI does this; for local,
-   open in Android Studio once.
-8. Decide auto-process vs manual (SettingsStore.autoProcess) default = manual to control cost.
+## 5. Status checklist
+Done in this pass:
+1. ✅ `RecorderService` start/stop, TTS announcement, auto-process hook (background-start still
+   caught-and-stopped; a full-screen "tap to record" fallback is the one soft spot left).
+2. ✅ `CallImport` (MediaStore scan) + Home toolbar import button.
+3. ✅ Pipeline extracted to `ai/Processor` (shared by UI + auto-process); `ViewModel.process()` wired.
+4. ✅ `OnboardingScreen` — live status checks + actions for mic, notifications, API key,
+   accessibility, add-QS-tile; VoIP-speaker hint. Shown first when core setup incomplete.
+5. ✅ Detail + Settings composables complete.
+6. ✅ App icon + strings.
+7. ✅ Share-to-import (ACTION_SEND audio) wired in `MainActivity`.
+
+Still open / nice-to-have:
+- Full-screen "tap to record" fallback when a background mic-FGS start is refused (rare in practice:
+  starts come from the QS tile, accessibility, or phone-state, which are valid contexts).
+- Gradle wrapper jar — CI generates it; for local, open in Android Studio once.
+- Optional: per-call audio-source toggle (MIC vs VOICE_COMMUNICATION), offline whisper.cpp,
+  direct Google Drive/Docs export.
+- `SettingsStore.autoProcess` default is OFF (manual) to control API cost.
 
 ## 6. Build & ship
 - **Android Studio:** open the project root, let it sync, Run on device, or Build → Build APK.
