@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">CallNotes</string>
+    <string name="tile_label">Record call</string>
+    <string name="recording_title">Recording call</string>
+    <string name="recording_text">Capturing audio (%1$s)</string>
+    <string name="stop">Stop</string>
+    <string name="accessibility_description">Detects when a WhatsApp, Telegram or other VoIP call starts so CallNotes can record it. Audio is stored only on your device and sent to your chosen transcription service when you ask.</string>
+</resources>
